@@ -294,20 +294,17 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
     # Plot and save the stack ###
 
     dpi = 200
-    plt.figure(figsize=(stack_img.shape[1]/dpi, stack_img.shape[0]/dpi), dpi=dpi)
+    fig = plt.figure(figsize=(stack_img.shape[1]/dpi, (stack_img.shape[0] + 80)/dpi), dpi=dpi)
+    ax = fig.add_axes([0, 0, 1, 1])
 
-    plt.imshow(stack_img, cmap='gray', vmin=0, vmax=256, interpolation='nearest')
+    ax.imshow(stack_img, cmap='gray', vmin=np.quantile(stack_img[stack_img>0], 0.05), vmax=256, interpolation='nearest')
 
-    plt.axis('off')
-    plt.gca().get_xaxis().set_visible(False)
-    plt.gca().get_yaxis().set_visible(False)
+    ax.text(10, stack_img.shape[0] - 10, f"{len(ff_found_list)} meteoren boven Dwingeloo, nacht van 5 december 2020.\nCC-BY 4.0 Tammo Jan Dijkema. Produced with software from globalmeteornetwork.org", color='gray', fontsize=6, fontname='Source Sans Pro', weight='ultralight')
 
-    plt.xlim([0, stack_img.shape[1]])
-    plt.ylim([stack_img.shape[0], 0])
+    ax.set_axis_off()
 
-    # Remove the margins (top and right are set to 0.9999, as setting them to 1.0 makes the image blank in 
-    #   some matplotlib versions)
-    plt.subplots_adjust(left=0, bottom=0, right=0.9999, top=0.9999, wspace=0, hspace=0)
+    ax.set_xlim([0, stack_img.shape[1]])
+    ax.set_ylim([stack_img.shape[0], 0])
 
     filenam = os.path.join(dir_path, os.path.basename(dir_path) + "_track_stack.jpg")
     plt.savefig(filenam, bbox_inches='tight', pad_inches=0, dpi=dpi)
