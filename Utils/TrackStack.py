@@ -8,6 +8,8 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
+from tqdm import tqdm
+
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP
 from RMS.Astrometry.Conversions import date2JD, jd2Date
 from RMS.Formats.FFfile import validFFName, getMiddleTimeFF
@@ -193,9 +195,7 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
 
 
     # Load individual FFs and map them to the stack
-    for i, ff_name in enumerate(ff_found_list):
-
-        print("Stacking {:s}, {:.1f}% done".format(ff_name, 100*i/len(ff_found_list)))
+    for i, ff_name in enumerate(tqdm(ff_found_list)):
 
         # Read the FF file
         ff = readFF(dir_path, ff_name)
