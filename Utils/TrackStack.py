@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 
 import os
 import json
@@ -50,6 +50,7 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
 
     # Find recalibrated platepars file per FF file
     platepars_recalibrated_file = None
+    dir_path = dir_path.rstrip('/')
     for file_name in os.listdir(dir_path):
         if file_name == config.platepars_recalibrated_name:
             platepars_recalibrated_file = file_name
@@ -370,6 +371,5 @@ if __name__ == "__main__":
     # Load the config file
     config = cr.loadConfigFromDirectory(cml_args.config, cml_args.dir_path)
 
-
-    trackStack(cml_args.dir_path, config, background_compensation=(not cml_args.bkgnormoff), 
-        hide_plot=cml_args.hideplot)
+    dir_path = os.path.normpath(cml_args.dir_path)
+    trackStack(dir_path, config, background_compensation=(not cml_args.bkgnormoff))
