@@ -322,8 +322,8 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
     ax.set_xlim([0, stack_img.shape[1]])
     ax.set_ylim([stack_img.shape[0], 0])
 
-    filenam = os.path.join(dir_path, os.path.basename(dir_path) + "_track_stack.jpg")
-    plt.savefig(filenam, bbox_inches='tight', pad_inches=0, dpi=dpi, facecolor='k', edgecolor='k')
+    night_dir = os.path.basename(os.path.abspath(dir_path))
+    plt.savefig(os.path.join(dir_path, night_dir + "_track_stack.png"), bbox_inches='tight', pad_inches=0, dpi=dpi, facecolor='k', edgecolor='k')
 
     #
 
