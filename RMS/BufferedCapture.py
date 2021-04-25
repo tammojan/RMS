@@ -21,7 +21,7 @@ import time
 import logging
 from multiprocessing import Process, Event
 
-import cv2
+import D_mipicamera as Dcam
 
 from RMS.Misc import ping
 
@@ -107,75 +107,10 @@ class BufferedCapture(Process):
 
     def initVideoDevice(self):
         """ Initialize the video device. """
-
-        device = None
-
-        # use a file as the video source
-        if self.video_file is not None:
-            device = cv2.VideoCapture(self.video_file)
-
-        # Use a device as the video source
-        else:
-
-            # If an analog camera is used, skip the ping
-            ip_cam = False
-            if "rtsp" in str(self.config.deviceID):
-                ip_cam = True
-
-
-            if ip_cam:
-
-                ### If the IP camera is used, check first if it can be pinged
-
-                # Extract the IP address
-                ip = re.findall(r"[0-9]+(?:\.[0-9]+){3}", self.config.deviceID)
-
-                # Check if the IP address was found
-                if ip:
-                    ip = ip[0]
-
-                    # Try pinging 5 times
-                    ping_success = False
-
-                    for i in range(500):
-
-                        print('Trying to ping the IP camera...')
-                        ping_success = ping(ip)
-
-                        if ping_success:
-                            log.info("Camera IP ping successful!")
-                            break
-
-                        time.sleep(5)
-
-                    if not ping_success:
-                        log.error("Can't ping the camera IP!")
-                        return None
-
-                else:
-                    return None
-
-
-
-            # Init the video device
-            log.info("Initializing the video device...")
-            device = cv2.VideoCapture(self.config.deviceID)
-
-            # Try setting the resultion if using a video device, not gstreamer
-            try:
-
-                # This will fail if the video device is a gstreamer pipe
-                int(self.config.deviceID)
-                
-                # Set the resolution (crashes if using an IP camera and gstreamer!)
-                device.set(3, self.config.width_device)
-                device.set(4, self.config.height_device)
-
-            except:
-                pass
-
-
-        return device
+        camera = Dcam.mipi_camera()
+        #print("Tammo says init camera ", self.config.width, self.config.height, int(self.config.fps))
+        camera.init_camera(format_=(self.config.width, self.config.height, int(self.config.fps)))
+        return camera
 
 
     def run(self):
@@ -192,32 +127,6 @@ class BufferedCapture(Process):
             self.exit.set()
             return False
 
-
-        # Wait until the device is opened
-        device_opened = False
-        for i in range(20):
-            time.sleep(1)
-            if device.isOpened():
-                device_opened = True
-                break
-
-
-        # If the device could not be opened, stop capturing
-        if not device_opened:
-            log.info('The video source could not be opened!')
-            self.exit.set()
-            return False
-
-        else:
-            log.info('Video device opened!')
-
-
-
-        # Throw away first 10 frame
-        for i in range(10):
-            device.read()
-
-
         first = True
 
         wait_for_reconnect = False
@@ -233,45 +142,6 @@ class BufferedCapture(Process):
             else:
                 self.startTime2.value = 0
             
-
-            # If the video device was disconnected, wait 5s for reconnection
-            if wait_for_reconnect:
-
-                print('Reconnecting...')
-
-                while not self.exit.is_set():
-
-                    log.info('Waiting for the video device to be reconnected...')
-
-                    time.sleep(5)
-
-                    # Reinit the video device
-                    device = self.initVideoDevice()
-
-
-                    if device is None:
-                        print("The video device couldn't be connected! Retrying...")
-                        continue
-
-
-                    if self.exit.is_set():
-                        break
-
-                    # Read the frame
-                    log.info("Reading frame...")
-                    ret, frame = device.read()
-                    log.info("Frame read!")
-
-                    # If the connection was made and the frame was retrieved, continue with the capture
-                    if ret:
-                        log.info('Video device reconnected successfully!')
-                        wait_for_reconnect = False
-                        break
-
-
-                wait_for_reconnect = False
-
-
             t_frame = 0
             t_assignment = 0
             t_convert = 0
@@ -283,32 +153,17 @@ class BufferedCapture(Process):
 
                 # Read the frame
                 t1_frame = time.time()
-                ret, frame = device.read()
+                framebuf = device.capture(encoding='i420')
+                #print("Tammo says framebuf ok")
+                frame = framebuf.as_array
+                #print("Tammo says frame ok")
+                height = int(1.5 * Dcam.align_up(self.config.height, 16))
+                width = Dcam.align_up(self.config.width, 16)
+                #print("Tammo says config.height = ",self.config.height)
+                #print("Tammo says height=",height," width=",width)
+                frame = frame.reshape(height, width)
                 t_frame = time.time() - t1_frame
 
-
-                # If the video device was disconnected, wait for reconnection
-                if not ret:
-
-                    log.info('Frame grabbing failed, video device is probably disconnected!')
-
-                    wait_for_reconnect = True
-                    break
-
-
-
-                # If the end of the file was reached, stop the capture
-                if (self.video_file is not None) and (frame is None):
-
-                    log.info('End of video file! Press Ctrl+C to finish.')
-
-                    self.exit.set()
-                    
-                    time.sleep(0.1)
-
-                    break
-
-                
                 t = time.time()
 
                 if i == 0: 
@@ -350,6 +205,7 @@ class BufferedCapture(Process):
 
 
                 # Cut the frame to the region of interest (ROI)
+                gray = gray[:self.config.height, :self.config.width]
                 gray = gray[self.config.roi_up:self.config.roi_down, \
                     self.config.roi_left:self.config.roi_right]
 
@@ -370,10 +226,8 @@ class BufferedCapture(Process):
                 if self.video_file is not None:
 
                     time.sleep(1.0/self.config.fps)
-
-                    # If the video finished, stop the capture
-                    if not device.isOpened():
-                        self.exit.set()
+                device.release_buffer(framebuf)
+                del framebuf
 
 
 
