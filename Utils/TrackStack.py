@@ -3,6 +3,7 @@
 import os
 import json
 import copy
+from glob import glob
 
 import cv2
 import numpy as np
@@ -19,6 +20,7 @@ from RMS.Formats.FFfile import validFFName, getMiddleTimeFF
 from RMS.Formats.FFfile import read as readFF
 from RMS.Formats.Platepar import Platepar
 from RMS.Math import angularSeparation
+from Utils.ShowerAssociation import showerAssociation
 from RMS.Routines.MaskImage import loadMask, MaskStructure
 
 
@@ -72,13 +74,31 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
         print("The {:s} file was not found!".format(config.platepars_recalibrated_name))
         return False
 
+    # Get FTP file
+    ftp_list = glob(os.path.join(dir_path, "FTPdetectinfo_??????_????????_??????_??????.txt"))
+    if len(ftp_list) != 1:
+        raise Exception("Could not choose FTPdetectinfo file, found: " + ", ".join(ftp_list))
+    ftp_file = ftp_list[0] #"/Volumes/home/RMS_data/ConfirmedFiles/NL000D_20210811_194737_583604/FTPdetectinfo_NL000D_20210811_194737_583604.txt"
+    associations, shower_counts = showerAssociation(config, [ftp_file], \
+        shower_code=None, show_plot=False, save_plot=False, plot_activity=False)
+
+    shower = "PER"
 
     # Get a list of FF files in the folder
     ff_list = []
-    for file_name in os.listdir(dir_path):
-        if validFFName(file_name):
-            ff_list.append(file_name)
+    for key in associations:
+        ff_list.append(key[0])
+    ff_list = list(set(ff_list))
 
+    colors = {}
+    for showernum, shower in enumerate(shower_counts):
+        if shower[0] is None:
+            showername = "Sporadic"
+        else:
+            showername = shower[0].name
+        colors[showername] = 'C' + str(showernum + 1)
+        if showernum > 9:
+            raise RuntimeError("Error, only 9 showers supported, sorry")
 
     # Take the platepar with the middle time as the reference one
     ff_found_list = []
@@ -207,7 +227,17 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
 
 
     # Load individual FFs and map them to the stack
+    num_plotted = 0
     for i, ff_name in enumerate(tqdm(ff_found_list)):
+        shower = associations[(ff_temp, 1.0)][1]
+        if shower is None:
+            showername = "Sporadic"
+        else:
+            showername = shower.name
+        color = colors[showername]
+        if showername != shower:
+            continue
+        num_plotted += 1
 
         # Read the FF file
         ff = readFF(dir_path, ff_name)
@@ -315,7 +345,7 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
     obsnight = jd2Date(round(jd_middle + 0.5) - 0.5001) # Round to just before midnight
     obsnight_str = getLocalizedDate(obsnight)
 
-    ax.text(10, stack_img.shape[0] - 10, f"{len(ff_found_list)} meteoren boven Dwingeloo, nacht van {obsnight_str}.\nCC-BY 4.0 Tammo Jan Dijkema. Produced with software from globalmeteornetwork.org", color='gray', fontsize=6, fontname='Source Sans Pro', weight='ultralight')
+    ax.text(10, stack_img.shape[0] - 10, f"{num_plotted} meteoren boven Dwingeloo, nacht van {obsnight_str}.\nCC-BY 4.0 Tammo Jan Dijkema. Produced with software from globalmeteornetwork.org", color='gray', fontsize=6, fontname='Source Sans Pro', weight='ultralight')
 
     ax.set_axis_off()
 
