@@ -82,7 +82,7 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
     associations, shower_counts = showerAssociation(config, [ftp_file], \
         shower_code=None, show_plot=False, save_plot=False, plot_activity=False)
 
-    shower = "PER"
+    selected_showername = "PER"
 
     # Get a list of FF files in the folder
     ff_list = []
@@ -235,7 +235,8 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
         else:
             showername = shower.name
         color = colors[showername]
-        if showername != shower:
+        if showername != selected_showername:
+            print("Skipping, showername =", showername)
             continue
         num_plotted += 1
 
