@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 
 from tqdm import tqdm
 
+import locale
+from datetime import datetime
+
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP
 from RMS.Astrometry.Conversions import date2JD, jd2Date
 from RMS.Formats.FFfile import validFFName, getMiddleTimeFF
@@ -17,6 +20,14 @@ from RMS.Formats.FFfile import read as readFF
 from RMS.Formats.Platepar import Platepar
 from RMS.Math import angularSeparation
 from RMS.Routines.MaskImage import loadMask, MaskStructure
+
+
+def getLocalizedDate(d):
+    locale.setlocale(locale.LC_ALL, "")
+    dt = datetime(*d[:-1])
+    formatted = dt.strftime("%-d %B %Y")
+    locale.setlocale(locale.LC_ALL, locale.getdefaultlocale())
+    return formatted
 
 
 def trackStack(dir_path, config, border=5, background_compensation=True, hide_plot=False):
@@ -295,11 +306,15 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
 
     dpi = 200
     fig = plt.figure(figsize=(stack_img.shape[1]/dpi, (stack_img.shape[0] + 80)/dpi), dpi=dpi)
+    fig.patch.set_facecolor("black")
     ax = fig.add_axes([0, 0, 1, 1])
 
     ax.imshow(stack_img, cmap='gray', vmin=np.quantile(stack_img[stack_img>0], 0.05), vmax=256, interpolation='nearest')
 
-    ax.text(10, stack_img.shape[0] - 10, f"{len(ff_found_list)} meteoren boven Dwingeloo, nacht van 5 december 2020.\nCC-BY 4.0 Tammo Jan Dijkema. Produced with software from globalmeteornetwork.org", color='gray', fontsize=6, fontname='Source Sans Pro', weight='ultralight')
+    obsnight = jd2Date(round(jd_middle + 0.5) - 0.5001) # Round to just before midnight
+    obsnight_str = getLocalizedDate(obsnight)
+
+    ax.text(10, stack_img.shape[0] - 10, f"{len(ff_found_list)} meteoren boven Dwingeloo, nacht van {obsnight_str}.\nCC-BY 4.0 Tammo Jan Dijkema. Produced with software from globalmeteornetwork.org", color='gray', fontsize=6, fontname='Source Sans Pro', weight='ultralight')
 
     ax.set_axis_off()
 
@@ -307,7 +322,7 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
     ax.set_ylim([stack_img.shape[0], 0])
 
     filenam = os.path.join(dir_path, os.path.basename(dir_path) + "_track_stack.jpg")
-    plt.savefig(filenam, bbox_inches='tight', pad_inches=0, dpi=dpi)
+    plt.savefig(filenam, bbox_inches='tight', pad_inches=0, dpi=dpi, facecolor='k', edgecolor='k')
 
     #
 
