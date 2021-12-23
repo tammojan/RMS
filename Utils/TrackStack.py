@@ -405,4 +405,5 @@ if __name__ == "__main__":
     config = cr.loadConfigFromDirectory(cml_args.config, cml_args.dir_path)
 
     dir_path = os.path.normpath(cml_args.dir_path)
-    trackStack(dir_path, config, background_compensation=(not cml_args.bkgnormoff))
+    trackStack(dir_path, config, background_compensation=(not cml_args.bkgnormoff),
+        hide_plot=cml_args.hideplot)
