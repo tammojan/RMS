@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
+from pprint import pprint
 import os
 import json
 import copy
 from glob import glob
+import sys
 
 import cv2
 import numpy as np
@@ -75,20 +77,21 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
         return False
 
     # Get FTP file
-    ftp_list = glob(os.path.join(dir_path, "FTPdetectinfo_??????_????????_??????_??????.txt"))
+    ftp_list = glob(os.path.join(dir_path, "FTPdetectinfo_N?????_????????_??????_??????.txt"))
     if len(ftp_list) != 1:
         raise Exception("Could not choose FTPdetectinfo file, found: " + ", ".join(ftp_list))
     ftp_file = ftp_list[0] #"/Volumes/home/RMS_data/ConfirmedFiles/NL000D_20210811_194737_583604/FTPdetectinfo_NL000D_20210811_194737_583604.txt"
     associations, shower_counts = showerAssociation(config, [ftp_file], \
         shower_code=None, show_plot=False, save_plot=False, plot_activity=False)
 
-    selected_showername = "PER"
+    selected_showername = "URS"
 
     # Get a list of FF files in the folder
     ff_list = []
     for key in associations:
         ff_list.append(key[0])
     ff_list = list(set(ff_list))
+    #ff_list = [os.path.basename(ffname) for ffname in list(glob(os.path.join(dir_path, "FF*.fits")))]
 
     colors = {}
     for showernum, shower in enumerate(shower_counts):
@@ -104,7 +107,6 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
     ff_found_list = []
     jd_list = []
     for ff_name_temp in recalibrated_platepars:
-
         if ff_name_temp in ff_list:
 
             # Compute the Julian date of the FF middle
@@ -229,12 +231,12 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
     # Load individual FFs and map them to the stack
     num_plotted = 0
     for i, ff_name in enumerate(tqdm(ff_found_list)):
-        shower = associations[(ff_temp, 1.0)][1]
+        shower = associations[(ff_name, 1.0)][1]
         if shower is None:
             showername = "Sporadic"
         else:
             showername = shower.name
-        color = colors[showername]
+        #color = colors[showername]
         if showername != selected_showername:
             print("Skipping, showername =", showername)
             continue
