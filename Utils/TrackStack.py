@@ -34,7 +34,7 @@ def getLocalizedDate(d):
     return formatted
 
 
-def trackStack(dir_path, config, border=5, background_compensation=True, hide_plot=False):
+def trackStack(dir_path, config, border=5, background_compensation=True, hide_plot=False, showers=None):
     """ Generate a stack with aligned stars, so the sky appears static. The folder should have a
         platepars_all_recalibrated.json file.
 
@@ -47,6 +47,8 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
         background_compensation: [bool] Normalize the background by applying a median filter to avepixel and
             use it as a flat field. Slows down the procedure and may sometimes introduce artifacts. True
             by default.
+        showers: [list[str]] List of showers to include, as code. E.g. or ["GEM","URS"].
+            As a code for sporadics, use "..."
     """
 
 
@@ -84,24 +86,12 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
     associations, shower_counts = showerAssociation(config, [ftp_file], \
         shower_code=None, show_plot=False, save_plot=False, plot_activity=False)
 
-    selected_showername = "URS"
-
     # Get a list of FF files in the folder
     ff_list = []
     for key in associations:
         ff_list.append(key[0])
     ff_list = list(set(ff_list))
     #ff_list = [os.path.basename(ffname) for ffname in list(glob(os.path.join(dir_path, "FF*.fits")))]
-
-    colors = {}
-    for showernum, shower in enumerate(shower_counts):
-        if shower[0] is None:
-            showername = "Sporadic"
-        else:
-            showername = shower[0].name
-        colors[showername] = 'C' + str(showernum + 1)
-        if showernum > 9:
-            raise RuntimeError("Error, only 9 showers supported, sorry")
 
     # Take the platepar with the middle time as the reference one
     ff_found_list = []
@@ -233,12 +223,12 @@ def trackStack(dir_path, config, border=5, background_compensation=True, hide_pl
     for i, ff_name in enumerate(tqdm(ff_found_list)):
         shower = associations[(ff_name, 1.0)][1]
         if shower is None:
-            showername = "Sporadic"
+            showername = "..."
         else:
             showername = shower.name
-        #color = colors[showername]
-        if showername != selected_showername:
-            print("Skipping, showername =", showername)
+
+        if showers is not None and showername not in showers:
+            #print("Skipping, showername =", showername)
             continue
         num_plotted += 1
 
@@ -395,6 +385,9 @@ if __name__ == "__main__":
     arg_parser.add_argument('-x', '--hideplot', action="store_true",
         help="""Don't show the stack on the screen after stacking. """)
 
+    arg_parser.add_argument('-s', '--showers', type=str,
+        help="Show only meteors from specific showers (e.g. URS, PER, GEM, ... for sporadic). Comma-separated list.")
+
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
 
@@ -406,4 +399,4 @@ if __name__ == "__main__":
 
     dir_path = os.path.normpath(cml_args.dir_path)
     trackStack(dir_path, config, background_compensation=(not cml_args.bkgnormoff),
-        hide_plot=cml_args.hideplot)
+        hide_plot=cml_args.hideplot, showers=cml_args.showers.split(","))
