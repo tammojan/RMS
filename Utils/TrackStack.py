@@ -397,6 +397,10 @@ if __name__ == "__main__":
     # Load the config file
     config = cr.loadConfigFromDirectory(cml_args.config, cml_args.dir_path)
 
+    showers = cml_args.showers
+    if showers is not None:
+        showers = showers.split(",")
+
     dir_path = os.path.normpath(cml_args.dir_path)
     trackStack(dir_path, config, background_compensation=(not cml_args.bkgnormoff),
-        hide_plot=cml_args.hideplot, showers=cml_args.showers.split(","))
+        hide_plot=cml_args.hideplot, showers=cml_args.showers)
