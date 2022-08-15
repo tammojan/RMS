@@ -18,6 +18,7 @@ from datetime import datetime
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP
 from RMS.Astrometry.Conversions import date2JD, jd2Date
 from RMS.Formats.FFfile import validFFName, getMiddleTimeFF
+from RMS.Formats.FTPdetectinfo import readFTPdetectinfo
 from RMS.Formats.FFfile import read as readFF
 from RMS.Formats.Platepar import Platepar
 from RMS.Math import angularSeparation
@@ -32,6 +33,14 @@ def getLocalizedDate(d):
     locale.setlocale(locale.LC_ALL, locale.getdefaultlocale())
     return formatted
 
+
+def make_mask(ftp_points, initial_mask):
+    """Make a mask in which only the meteor is visible"""
+    meteor_mask = np.zeros_like(initial_mask.img)
+    meteor_mask = cv2.line(meteor_mask, (round(ftp_points[0][2]), round(ftp_points[0][3])), 
+                          (round(ftp_points[-1][2]), round(ftp_points[-1][3])), 255, 1)
+    meteor_mask = cv2.dilate(meteor_mask, np.ones((150, 150)))
+    return np.minimum(meteor_mask, initial_mask.img)
 
 def trackStack(dir_paths, config, border=5, background_compensation=True, hide_plot=False, showers=None):
     """ Generate a stack with aligned stars, so the sky appears static. The folder should have a
@@ -78,6 +87,7 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
     print('Loaded recalibrated platepars JSON file for the calibration report...')
 
     associations = {}
+    ftp_points = {}
     for dir_path in dir_paths:
         # Get FTP file
         ftp_list = glob(os.path.join(dir_path, "FTPdetectinfo_N?????_????????_??????_??????.txt"))
@@ -87,6 +97,8 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
         associations_per_dir, shower_counts = showerAssociation(config, [ftp_file], \
             shower_code=None, show_plot=False, save_plot=False, plot_activity=False)
         associations.update(associations_per_dir)
+        for ftp_entry in readFTPdetectinfo(os.path.dirname(ftp_file), os.path.basename(ftp_file)):
+            ftp_points[(ftp_entry[0], ftp_entry[2])] = ftp_entry[-1]
 
     # Get a list of FF files in the folder
     ff_list = []
@@ -117,10 +129,12 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
 
 
 
-    # Take the FF file with the middle JD
+    # Take the FF file with the mean time within a night (unwrap nights)
     jd_list = np.array(jd_list)
-    jd_middle = np.mean(jd_list)
-    jd_mean_index = np.argmin(np.abs(jd_list - jd_middle))
+    #jd_middle = np.mean(jd_list)
+    #jd_mean_index = np.argmin(np.abs(jd_list - jd_middle))
+    jd_mean_index = np.argsort(np.unwrap(jd_list, period=1))[len(jd_list)//2]
+    jd_middle = jd_list[jd_mean_index]
     ff_mid = ff_found_list[jd_mean_index]
 
 
@@ -220,7 +234,6 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
     avg_stack_count = np.zeros((img_size, img_size), dtype=int)
     max_deaveraged = np.zeros((img_size, img_size), dtype=np.uint8)
 
-
     # Load individual FFs and map them to the stack
     num_plotted = 0
     for i, ff_name in enumerate(tqdm(ff_found_list)):
@@ -267,12 +280,14 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
         stack_x = stack_x[filter_arr]
         stack_y = stack_y[filter_arr]
 
-
+        ff_mask = make_mask(ftp_points[(os.path.basename(ff_name), 1.0)], mask)
+        plt.imsave("/Users/dijkema/tmp/img.png", ff_mask)
+        #print(ftp_points[(os.path.basename(ff_name), 1.0)])
         # Apply the mask to maxpixel and avepixel
         maxpixel = copy.deepcopy(ff.maxpixel)
-        maxpixel[mask.img == 0] = 0
+        maxpixel[ff_mask == 0] = 0
         avepixel = copy.deepcopy(ff.avepixel)
-        avepixel[mask.img == 0] = 0
+        avepixel[ff_mask == 0] = 0
 
         # Compute deaveraged maxpixel
         max_deavg = maxpixel - avepixel
@@ -336,19 +351,21 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
     fig.patch.set_facecolor("black")
     ax = fig.add_axes([0, 0, 1, 1])
 
-    ax.imshow(stack_img, cmap='gray', vmin=np.quantile(stack_img[stack_img>0], 0.05), vmax=256, interpolation='nearest')
+    vmin = 0
+    np.quantile(stack_img[stack_img>0], 0.05)
+    ax.imshow(stack_img, cmap='gray', vmin=vmin, vmax=256, interpolation='nearest')
 
     obsnight = jd2Date(round(jd_middle + 0.5) - 0.5001) # Round to just before midnight
     obsnight_str = getLocalizedDate(obsnight)
 
-    ax.text(10, stack_img.shape[0] - 10, f"{num_plotted} meteoren boven Dwingeloo, nacht van {obsnight_str}.\nCC-BY 4.0 Tammo Jan Dijkema. Produced with software from globalmeteornetwork.org", color='gray', fontsize=6, fontname='Source Sans Pro', weight='ultralight')
+    #ax.text(10, stack_img.shape[0] - 10, f"{num_plotted} meteoren boven Dwingeloo, nacht van {obsnight_str}.\nCC-BY 4.0 Tammo Jan Dijkema. Produced with software from globalmeteornetwork.org", color='gray', fontsize=6, fontname='Source Sans Pro', weight='ultralight')
 
     ax.set_axis_off()
 
     ax.set_xlim([0, stack_img.shape[1]])
     ax.set_ylim([stack_img.shape[0], 0])
 
-    filenam = os.path.join(dir_path, os.path.basename(dir_path) + "_track_stack.jpg")
+    filenam = os.path.join(dir_path, os.path.basename(dir_path) + "_track_stack.png")
     plt.savefig(filenam, bbox_inches='tight', pad_inches=0, dpi=dpi, facecolor='k', edgecolor='k')
     print(f"Saved to {filenam}")
 
