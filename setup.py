@@ -22,8 +22,10 @@ kht_module = Extension("kht_module",
 
 
 # Read requirements file
-with open('requirements.txt') as f:
-    requirements = f.read().splitlines()
+#with open('requirements.txt') as f:
+#    requirements = f.read().splitlines()
+requirements = []
+
 # drop unsupported git refs for install_requires https://github.com/pypa/setuptools/issues/1052
 for requirement in requirements:
     if requirement.startswith("git+"):

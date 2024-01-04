@@ -22,7 +22,7 @@ from RMS.Formats.FTPdetectinfo import readFTPdetectinfo
 from RMS.Formats.FFfile import read as readFF
 from RMS.Formats.Platepar import Platepar
 from RMS.Math import angularSeparation
-from Utils.ShowerAssociation import showerAssociation
+from Utils.ShowerAssociation import showerAssociation, loadShowers
 from RMS.Routines.MaskImage import loadMask, MaskStructure
 
 
@@ -40,6 +40,7 @@ def make_mask(ftp_points, initial_mask):
     meteor_mask = cv2.line(meteor_mask, (round(ftp_points[0][2]), round(ftp_points[0][3])), 
                           (round(ftp_points[-1][2]), round(ftp_points[-1][3])), 255, 1)
     meteor_mask = cv2.dilate(meteor_mask, np.ones((150, 150)))
+    plt.imsave("/Users/dijkema/tmp/mask.png", meteor_mask, cmap='gray')
     return np.minimum(meteor_mask, initial_mask.img)
 
 def trackStack(dir_paths, config, border=5, background_compensation=True, hide_plot=False, showers=None):
@@ -128,14 +129,29 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
         return False
 
 
-
-    # Take the FF file with the mean time within a night (unwrap nights)
-    jd_list = np.array(jd_list)
-    #jd_middle = np.mean(jd_list)
-    #jd_mean_index = np.argmin(np.abs(jd_list - jd_middle))
-    jd_mean_index = np.argsort(np.unwrap(jd_list, period=1))[len(jd_list)//2]
-    jd_middle = jd_list[jd_mean_index]
-    ff_mid = ff_found_list[jd_mean_index]
+    if showers is None:
+        # Take the FF file with the mean time within a night (unwrap nights)
+        jd_list = np.array(jd_list)
+        jd_mean_index = np.argsort(np.unwrap(jd_list, period=1))[len(jd_list)//2]
+        jd_middle = np.mean(jd_list) # wrong
+        jd_mean_index = np.argmin(np.abs(jd_list - jd_middle)) #wrong
+        jd_middle = jd_list[jd_mean_index]
+        ff_mid = ff_found_list[jd_mean_index]
+    else:
+        # Take the FF file with center closest to the requested radiant
+        shower_list = loadShowers(config.shower_path, config.shower_file_name)
+        this_shower = [s for s in shower_list if s[1] == showers][0]
+        ra_shower = this_shower[6]
+        dec_shower = this_shower[7]
+        min_sep = 1000.
+        for num, ff in enumerate(ff_found_list):
+            pp_tmp = Platepar()
+            pp_tmp.loadFromDict(recalibrated_platepars[ff])
+            sep = angularSeparation(ra_shower, dec_shower, pp_tmp.RA_d, pp_tmp.dec_d)
+            if sep < min_sep:
+                min_sep = sep
+                ff_mid = ff
+                jd_middle = jd_list[num]
 
 
     # Load the middle platepar as the reference one
@@ -227,6 +243,7 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
     pp_stack.Y_res = img_size
     pp_stack.F_scale *= scale
     pp_stack.refraction = False
+    print(f"Using {ff_mid} as reference platepar, with X_res = Y_res = {img_size}, scale = {scale}")
 
 
     # Init the image
@@ -236,8 +253,14 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
 
     # Load individual FFs and map them to the stack
     num_plotted = 0
-    for i, ff_name in enumerate(tqdm(ff_found_list)):
-        shower = associations[(os.path.basename(ff_name), 1.0)][1]
+    new_ff_found_list = []
+    for i, ff_name in enumerate(ff_found_list):
+        for i in range(10):
+            try:
+                shower = associations[(os.path.basename(ff_name), 1.0 * i)][1]
+                break
+            except KeyError:
+                pass
         if shower is None:
             showername = "..."
         else:
@@ -246,6 +269,10 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
         if showers is not None and showername not in showers:
             #print("Skipping, showername =", showername)
             continue
+        new_ff_found_list.append(ff_name)
+
+    ff_found_list = new_ff_found_list
+    for i, ff_name in enumerate(tqdm(ff_found_list)):
         num_plotted += 1
 
         # Read the FF file
@@ -280,8 +307,22 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
         stack_x = stack_x[filter_arr]
         stack_y = stack_y[filter_arr]
 
-        ff_mask = make_mask(ftp_points[(os.path.basename(ff_name), 1.0)], mask)
-        plt.imsave("/Users/dijkema/tmp/img.png", ff_mask)
+        plt.imsave("/Users/dijkema/tmp/img.png", ff.maxpixel, cmap='gray')
+        # fswatch img.png | xargs -n 1 imgcat
+        use_this_one = input("Use this one [y/n/m]: ")
+        if use_this_one == 'n':
+            continue
+
+        if use_this_one == 'm':
+            for i in range(10):
+                try:
+                    ff_mask = make_mask(ftp_points[(os.path.basename(ff_name), 1.0)], mask)
+                    break
+                except KeyError:
+                    pass
+        else:
+            ff_mask = mask.img
+
         #print(ftp_points[(os.path.basename(ff_name), 1.0)])
         # Apply the mask to maxpixel and avepixel
         maxpixel = copy.deepcopy(ff.maxpixel)
@@ -326,7 +367,6 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
         max_deaveraged[stack_y, stack_x] = np.max(np.dstack([max_deaveraged[stack_y, stack_x],
                                                              max_deavg[y_coords, x_coords]]), axis=2)
 
-
     # Compute the blended avepixel background
     stack_img = avg_stack_sum
     stack_img[avg_stack_count > 0] /= avg_stack_count[avg_stack_count > 0]
@@ -336,11 +376,12 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
 
 
     # Crop image
-    non_empty_columns = np.where(stack_img.max(axis=0) > 0)[0]
-    non_empty_rows = np.where(stack_img.max(axis=1) > 0)[0]
-    crop_box = (np.min(non_empty_rows), np.max(non_empty_rows), np.min(non_empty_columns),
-        np.max(non_empty_columns))
-    stack_img = stack_img[crop_box[0]:crop_box[1]+1, crop_box[2]:crop_box[3]+1]
+    if False:
+        non_empty_columns = np.where(stack_img.max(axis=0) > 0)[0]
+        non_empty_rows = np.where(stack_img.max(axis=1) > 0)[0]
+        crop_box = (np.min(non_empty_rows), np.max(non_empty_rows), np.min(non_empty_columns),
+            np.max(non_empty_columns))
+        stack_img = stack_img[crop_box[0]:crop_box[1]+1, crop_box[2]:crop_box[3]+1]
 
 
 
@@ -367,7 +408,7 @@ def trackStack(dir_paths, config, border=5, background_compensation=True, hide_p
 
     filenam = os.path.join(dir_path, os.path.basename(dir_path) + "_track_stack.png")
     plt.savefig(filenam, bbox_inches='tight', pad_inches=0, dpi=dpi, facecolor='k', edgecolor='k')
-    print(f"Saved to {filenam}")
+    print(f"Saved to {filenam} ({num_plotted} plotted)")
 
     #
 
